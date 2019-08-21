@@ -54,6 +54,7 @@ parser.add_argument('--n_layer', type=int, default=2, help='Number of layers')
 parser.add_argument('--n_flow', type=int, default=6, help='Number of layers')
 parser.add_argument('--n_block', type=int, default=8, help='Number of layers')
 parser.add_argument('--cin_channels', type=int, default=80, help='Cin Channels')
+parser.add_argument('--hidden_channels', type=int, default=256, help='Hidden Channels')
 parser.add_argument('--block_per_split', type=int, default=4, help='Block per split')
 parser.add_argument('--num_workers', type=int, default=2, help='Number of workers')
 args = parser.parse_args()
@@ -104,6 +105,7 @@ def build_model():
                        n_block=args.n_block,
                        n_flow=args.n_flow,
                        n_layer=args.n_layer,
+                       hidden_channel=args.hidden_channels,
                        affine=True,
                        pretrained=pretrained,
                        block_per_split=args.block_per_split)

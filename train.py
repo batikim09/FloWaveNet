@@ -27,13 +27,14 @@ parser.add_argument('--log', type=str, default='./log', help='Log folder.')
 parser.add_argument('--model_name', type=str, default='flowavenet', help='Model Name')
 parser.add_argument('--load_step', type=int, default=0, help='Load Step')
 parser.add_argument('--epochs', '-e', type=int, default=5000, help='Number of epochs to train.')
-parser.add_argument('--batch_size', '-b', type=int, default=2, help='Batch size.')
+parser.add_argument('--batch_size', '-b', type=int, default=1, help='Batch size.')
 parser.add_argument('--learning_rate', '-lr', type=float, default=0.001, help='The Learning Rate.')
 parser.add_argument('--loss', type=str, default='./loss', help='Folder to save loss')
 parser.add_argument('--n_layer', type=int, default=2, help='Number of layers')
 parser.add_argument('--n_flow', type=int, default=6, help='Number of layers')
 parser.add_argument('--n_block', type=int, default=8, help='Number of layers')
 parser.add_argument('--cin_channels', type=int, default=80, help='Cin Channels')
+parser.add_argument('--hidden_channels', type=int, default=256, help='Hidden Channels')
 parser.add_argument('--block_per_split', type=int, default=4, help='Block per split')
 parser.add_argument('--num_workers', type=int, default=2, help='Number of workers')
 parser.add_argument('--num_gpu', type=int, default=1, help='Number of GPUs to use. >1 uses DataParallel')
@@ -58,17 +59,6 @@ if not os.path.isdir(os.path.join(args.save, args.model_name)):
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
-# LOAD DATASETS
-train_dataset = LJspeechDataset(args.data_path, True, 0.1)
-test_dataset = LJspeechDataset(args.data_path, False, 0.1)
-train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn,
-                          num_workers=args.num_workers, pin_memory=True)
-test_loader = DataLoader(test_dataset, batch_size=args.batch_size, collate_fn=collate_fn,
-                         num_workers=args.num_workers, pin_memory=True)
-synth_loader = DataLoader(test_dataset, batch_size=1, collate_fn=collate_fn_synthesize,
-                          num_workers=args.num_workers, pin_memory=True)
-
-
 def build_model():
     pretrained = True if args.load_step > 0 else False
     model = Flowavenet(in_channel=1,
@@ -76,6 +66,7 @@ def build_model():
                        n_block=args.n_block,
                        n_flow=args.n_flow,
                        n_layer=args.n_layer,
+                       hidden_channel=args.hidden_channels,
                        affine=True,
                        pretrained=pretrained,
                        block_per_split=args.block_per_split)
@@ -89,10 +80,12 @@ def train(epoch, model, optimizer, scheduler):
     model.train()
     display_step = 100
     for batch_idx, (x, c) in enumerate(train_loader):
-        scheduler.step()
         global_step += 1
 
         x, c = x.to(device), c.to(device)
+
+        #print("DEBUG: x(bxc(1)xt)?", x.size())
+        #print("DEBUG: c(bxc(80)xt)?", c.size())
 
         optimizer.zero_grad()
         log_p, logdet = model(x, c)
@@ -114,6 +107,8 @@ def train(epoch, model, optimizer, scheduler):
                   .format(global_step, epoch, batch_idx + 1, np.array(running_loss)))
             running_loss = [0., 0., 0.]
         del x, c, log_p, logdet, loss
+
+        scheduler.step()
     del running_loss
     gc.collect()
     print('{} Epoch Training Loss : {:.4f}'.format(epoch, epoch_loss / (len(train_loader))))
@@ -211,10 +206,28 @@ def load_checkpoint(step, model, optimizer, scheduler):
 
     return model, optimizer, scheduler
 
+def count_params(model):
+    """ Count the number of parametres
+    """
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 
 if __name__ == "__main__":
     model = build_model()
+    print(model)
+    print("total params (M): ", count_params(model)/(1024*1024))
     model.to(device)
+
+    # LOAD DATASETS
+    train_dataset = LJspeechDataset(args.data_path, True, 0.1)
+    test_dataset = LJspeechDataset(args.data_path, False, 0.1)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn,
+                          num_workers=args.num_workers, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, collate_fn=collate_fn,
+                         num_workers=args.num_workers, pin_memory=True)
+    synth_loader = DataLoader(test_dataset, batch_size=1, collate_fn=collate_fn_synthesize,
+                          num_workers=args.num_workers, pin_memory=True)
 
     pretrained = True if args.load_step > 0 else False
     if pretrained is False:

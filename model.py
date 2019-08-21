@@ -17,6 +17,8 @@ class ActNorm(nn.Module):
         self.initialized = pretrained
         self.logdet = logdet
 
+        print("DEBUG: ActNorm, in channel:", in_channel)
+
     def initialize(self, x):
         with torch.no_grad():
             flatten = x.permute(1, 0, 2).contiguous().view(x.shape[1], -1)
@@ -136,7 +138,7 @@ def gaussian_sample(eps, mean, log_sd):
 
 
 class Block(nn.Module):
-    def __init__(self, in_channel, cin_channel, n_flow, n_layer, affine=True, pretrained=False, split=False):
+    def __init__(self, in_channel, cin_channel, n_flow, n_layer, hidden_channel = 256, affine=True, pretrained=False, split=False):
         super().__init__()
 
         self.split = split
@@ -145,12 +147,12 @@ class Block(nn.Module):
 
         self.flows = nn.ModuleList()
         for i in range(n_flow):
-            self.flows.append(Flow(squeeze_dim, squeeze_dim_c, filter_size=256, num_layer=n_layer, affine=affine,
+            self.flows.append(Flow(squeeze_dim, squeeze_dim_c, filter_size=hidden_channel, num_layer=n_layer, affine=affine,
                                    pretrained=pretrained))
         if self.split:
             self.prior = Wavenet(in_channels=squeeze_dim // 2, out_channels=squeeze_dim,
-                                 num_blocks=1, num_layers=2, residual_channels=256,
-                                 gate_channels=256, skip_channels=256,
+                                 num_blocks=1, num_layers=2, residual_channels=hidden_channel,
+                                 gate_channels=hidden_channel, skip_channels=hidden_channel,
                                  kernel_size=3, cin_channels=squeeze_dim_c, causal=False)
 
     def forward(self, x, c):
@@ -194,7 +196,7 @@ class Block(nn.Module):
 
 
 class Flowavenet(nn.Module):
-    def __init__(self, in_channel, cin_channel, n_block, n_flow, n_layer, affine=True, pretrained=False,
+    def __init__(self, in_channel, cin_channel, n_block, n_flow, n_layer, hidden_channel=256, affine=True, pretrained=False,
                  block_per_split=8):
         super().__init__()
         self.block_per_split = block_per_split
@@ -203,7 +205,7 @@ class Flowavenet(nn.Module):
         self.n_block = n_block
         for i in range(self.n_block):
             split = False if (i + 1) % self.block_per_split or i == self.n_block - 1 else True
-            self.blocks.append(Block(in_channel, cin_channel, n_flow, n_layer, affine=affine, 
+            self.blocks.append(Block(in_channel, cin_channel, n_flow, n_layer, hidden_channel, affine=affine, 
                                      pretrained=pretrained, split=split))
             cin_channel *= 2
             if not split:

@@ -23,6 +23,8 @@ class LJspeechDataset(Dataset):
     def __getitem__(self, idx):
         wav = np.load(self.paths[0][idx])
         mel = np.load(self.paths[1][idx])
+        #print("DEBUG: wav(t)?", wav.shape)
+        #print("DEBUG: mel(txc)?", mel.shape)
         return wav, mel
 
     def interest_indices(self, paths):
